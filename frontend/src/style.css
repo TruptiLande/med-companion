@@ -8,3 +8,11 @@ button,select,input{font:inherit;padding:10px 14px;border:2px solid var(--ink);b
 button{background:var(--ink);color:#fff;cursor:pointer;margin-right:8px}button.alt{background:#fff;color:var(--ink)}
 button:focus-visible,input:focus-visible,select:focus-visible{outline:4px solid var(--amber)}
 nav{display:flex;gap:8px}.row{display:grid;grid-template-columns:1fr 1fr;gap:8px}small{opacity:.75}
+.review-warning{padding:12px;border-inline-start:4px solid var(--alert);background:#fff2f0;color:#741b16}
+.evidence{margin:12px 0;padding:12px;border-block:1px solid #9aa9a4}
+.evidence summary{cursor:pointer;font-weight:700}
+.evidence img{display:block;max-width:100%;height:auto;margin-top:12px}
+.evidence pre{max-height:16rem;overflow:auto;white-space:pre-wrap}
+.card h2{font-size:20px;margin:0 0 8px}
+.verify-control{display:flex;align-items:flex-start;gap:10px;margin-top:12px}
+.verify-control input{flex:none;width:1.2rem;height:1.2rem;margin:4px 0 0;padding:0}

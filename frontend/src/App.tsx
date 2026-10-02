@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 type MealTimes = { breakfast: string; lunch: string; dinner: string };
 type Med = {
   name: string | null;
@@ -16,6 +16,7 @@ type Med = {
   caregiverVerified: boolean;
 };
 type Rem = { _id: string; name: string; explanation: string; language?: string; status: string; attempts: number; familyNotified?: boolean; scheduledAt: string };
+type OcrInfo = { confidence: number; threshold: number; engine: string; needsReview: boolean; warnings: string[] };
 const LANGS = ["Marathi", "Hindi", "Tamil", "English"];
 const DEFAULT_MEAL_TIMES: MealTimes = { breakfast: "09:00", lunch: "14:00", dinner: "21:00" };
 const validClockTime = (value: string) => /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value);
@@ -46,12 +47,24 @@ export default function App() {
   const [msg, setMsg] = useState("");
   const [rems, setRems] = useState<Rem[]>([]);
   const [ocrText, setOcrText] = useState("");
+  const [ocrInfo, setOcrInfo] = useState<OcrInfo | null>(null);
   const [prescriptionImage, setPrescriptionImage] = useState("");
   const [mealTimes, setMealTimes] = useState<MealTimes>(DEFAULT_MEAL_TIMES);
+  const [voiceEnabled, setVoiceEnabled] = useState(false);
+  const [browserVoices, setBrowserVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const autoSpoken = useRef(new Set<string>());
 
   useEffect(() => { const t = setInterval(() => fetch("/api/reminders").then((r) => r.json()).then(setRems).catch(() => {}), 3000); return () => clearInterval(t); }, []);
 
   useEffect(() => () => { if (prescriptionImage) URL.revokeObjectURL(prescriptionImage); }, [prescriptionImage]);
+
+  useEffect(() => {
+    if (!("speechSynthesis" in window)) return;
+    const refreshVoices = () => setBrowserVoices(window.speechSynthesis.getVoices());
+    refreshVoices();
+    window.speechSynthesis.addEventListener("voiceschanged", refreshVoices);
+    return () => window.speechSynthesis.removeEventListener("voiceschanged", refreshVoices);
+  }, []);
 
   const analyze = async (f: File) => {
     setBusy(true); setMsg("");
@@ -61,6 +74,7 @@ export default function App() {
       const r = await fetch("/api/analyze", { method: "POST", body: fd }); const j = await r.json();
       if (!r.ok) { setMeds([]); setMsg(j.error ?? "Could not analyze this image."); return; }
       setOcrText(j.ocrText ?? "");
+      setOcrInfo(j.ocr ?? null);
       if (j.scheduleDefaults) setMealTimes(j.scheduleDefaults);
       setMeds(Array.isArray(j.meds) ? j.meds : []);
       if (j.error) setMsg(j.error);
@@ -94,7 +108,7 @@ export default function App() {
     const editedFields = Object.keys(p);
     const uncertainFields = m.uncertainFields.filter((field) => !editedFields.includes(field) && !(editedFields.includes("timesPerDay") && field === "frequencyPattern"));
     const next = { ...m, ...p, uncertainFields, caregiverVerified: false };
-    if (editedFields.includes("frequencyPattern")) {
+    if (editedFields.includes("frequencyPattern") || editedFields.includes("timesPerDay")) {
       next.schedule = scheduleFromPattern(next.frequencyPattern, mealTimes);
       next.scheduleOrigin = next.schedule.length ? "generated" : "caregiver";
     }
@@ -103,6 +117,21 @@ export default function App() {
     next.reviewState = next.reviewIssues.length ? "do_not_schedule" : "ready";
     return next;
   }) ?? null);
+  const addManualMedicine = () => setMeds((current) => [...(current ?? []), {
+    name: null,
+    strength: null,
+    timesPerDay: null,
+    frequencyPattern: null,
+    timing: null,
+    durationDays: 1,
+    durationDefaulted: true,
+    schedule: [],
+    scheduleOrigin: "caregiver",
+    uncertainFields: [],
+    reviewIssues: ["name", "strength", "frequency", "schedule"],
+    reviewState: "do_not_schedule",
+    caregiverVerified: false,
+  }]);
   const verify = (i: number, checked: boolean) => {
     const currentMed = meds?.[i];
     if (!currentMed) return;
@@ -115,30 +144,70 @@ export default function App() {
       ? { ...m, caregiverVerified: checked, reviewIssues, reviewState: reviewIssues.length ? "do_not_schedule" : "ready" }
       : m) ?? null);
   };
-  const speakInBrowser = (r: Rem) => {
-    if (!("speechSynthesis" in window)) return setMsg(r.explanation);
+  const speakInBrowser = async (r: Rem): Promise<boolean> => {
+    if (!("speechSynthesis" in window)) return false;
+    const availableVoices = browserVoices.length ? browserVoices : await new Promise<SpeechSynthesisVoice[]>((resolve) => {
+      const initial = window.speechSynthesis.getVoices();
+      if (initial.length) return resolve(initial);
+      const onVoicesChanged = () => {
+        window.clearTimeout(timeout);
+        resolve(window.speechSynthesis.getVoices());
+      };
+      const timeout = window.setTimeout(() => {
+        window.speechSynthesis.removeEventListener("voiceschanged", onVoicesChanged);
+        resolve(window.speechSynthesis.getVoices());
+      }, 1500);
+      window.speechSynthesis.addEventListener("voiceschanged", onVoicesChanged, { once: true });
+    });
     const locales: Record<string, string> = { Marathi: "mr-IN", Hindi: "hi-IN", Tamil: "ta-IN", English: "en-IN" };
     const utterance = new SpeechSynthesisUtterance(r.explanation);
     utterance.lang = locales[r.language ?? "English"] ?? "en-IN";
-    const voice = window.speechSynthesis.getVoices().find((candidate) => candidate.lang.toLowerCase().startsWith(utterance.lang.slice(0, 2).toLowerCase()));
-    if (!voice) return setMsg(r.explanation);
+    const voice = availableVoices.find((candidate) => candidate.lang.toLowerCase().startsWith(utterance.lang.slice(0, 2).toLowerCase()));
+    if (!voice) return false;
     utterance.voice = voice;
-    utterance.onerror = () => setMsg(r.explanation);
     setMsg("");
     window.speechSynthesis.cancel();
-    window.speechSynthesis.speak(utterance);
+    return new Promise((resolve) => {
+      utterance.onend = () => resolve(true);
+      utterance.onerror = () => resolve(false);
+      window.speechSynthesis.speak(utterance);
+    });
   };
   const play = async (r: Rem) => {
     try {
-      const res = await fetch("/api/tts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: r.explanation }) });
+      const res = await fetch("/api/tts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: r.explanation, language: r.language }) });
       if (res.status === 200) {
-        const audio = new Audio(URL.createObjectURL(await res.blob()));
-        audio.onended = () => URL.revokeObjectURL(audio.src);
-        await audio.play();
-        return;
+        const audioUrl = URL.createObjectURL(await res.blob());
+        const audio = new Audio(audioUrl);
+        try {
+          await new Promise<void>((resolve, reject) => {
+            audio.onended = () => resolve();
+            audio.onerror = () => reject(new Error("Remote audio playback failed"));
+            audio.play().catch(reject);
+          });
+          return;
+        } finally { URL.revokeObjectURL(audioUrl); }
       }
     } catch { /* Fall back to browser speech when remote audio is unavailable. */ }
-    speakInBrowser(r);
+    if (!(await speakInBrowser(r))) setMsg(r.explanation);
+  };
+  useEffect(() => {
+    if (!voiceEnabled) return;
+    for (const reminder of rems) {
+      if (reminder.status !== "due") continue;
+      const key = `${reminder._id}:${reminder.attempts}`;
+      if (autoSpoken.current.has(key)) continue;
+      autoSpoken.current.add(key);
+      void play(reminder);
+    }
+  }, [rems, voiceEnabled]);
+  const enableVoice = () => {
+    setVoiceEnabled(true);
+    setMsg("Automatic voice reminders enabled for this app session.");
+    if ("speechSynthesis" in window) {
+      const utterance = new SpeechSynthesisUtterance("Voice reminders enabled.");
+      window.speechSynthesis.speak(utterance);
+    }
   };
   const taken = async (id: string) => {
     try {
@@ -149,10 +218,18 @@ export default function App() {
       setMsg("Could not reach the backend to confirm this reminder.");
     }
   };
+  const snooze = async (id: string) => {
+    try {
+      const response = await fetch(`/api/reminders/${id}/snooze`, { method: "POST" });
+      const result = await response.json().catch(() => ({}));
+      setMsg(response.ok ? "Reminder snoozed for 10 minutes." : result.error ?? "Could not snooze this reminder.");
+    } catch { setMsg("Could not reach the backend to snooze this reminder."); }
+  };
 
   return (
     <main>
       <h1>Medicine companion</h1>
+      <button className="alt" onClick={enableVoice} disabled={voiceEnabled}>{voiceEnabled ? "Voice enabled" : "Enable automatic voice"}</button>
       <nav>{(["setup", "reminders", "family"] as const).map((t) => <button key={t} className={tab === t ? "" : "alt"} onClick={() => setTab(t)}>{t === "setup" ? "Add prescription" : t === "reminders" ? "Today" : "Family view"}</button>)}</nav>
       {msg && <p role="status" className="card">{msg}</p>}
 
@@ -163,19 +240,30 @@ export default function App() {
           {meds.length === 0 || meds.some((m) => m.reviewState === "do_not_schedule" || !m.caregiverVerified)
             ? <p role="alert" className="review-warning"><b>Do not schedule yet.</b> Resolve highlighted fields and verify every medicine against the original prescription.</p>
             : <p><b>Review complete.</b> Nothing is scheduled until you confirm.</p>}
+          {ocrInfo && <p className={ocrInfo.needsReview ? "review-warning" : "ocr-quality"} role={ocrInfo.needsReview ? "alert" : "status"}>OCR: {ocrInfo.engine} · {(ocrInfo.confidence * 100).toFixed(1)}% confidence (threshold {(ocrInfo.threshold * 100).toFixed(0)}%). {ocrInfo.needsReview ? "Compare every field with the original." : ""} {ocrInfo.warnings.join(" ")}</p>}
           {prescriptionImage && <details className="evidence"><summary>Original prescription</summary><img src={prescriptionImage} alt="Uploaded prescription for caregiver verification" /></details>}
           {ocrText && <details className="evidence"><summary>Recognized prescription text</summary><pre>{ocrText}</pre></details>}
-          {meds.map((m, i) => (
-            <div className="card" key={i}>
+          {meds.length === 0 && <button className="alt" onClick={addManualMedicine}>Add medicine manually</button>}
+          {meds.map((m, i) => {
+            const issues = reviewIssuesFor(m);
+            return <div className="card" key={i}>
+              <h2>{m.name || "Unclear medicine name"}</h2>
+              {issues.length > 0 && <p role="alert" className="review-warning">Needs review: {issues.join(", ")}</p>}
+              {m.ocrNeedsReview && <p role="alert" className="review-warning">OCR confidence is low. Check every field against the original before verifying.</p>}
               <div className="row">
-                <label>Name<input value={m.name} onChange={(e) => edit(i, { name: e.target.value })} /></label>
+                <label>Name<input value={m.name ?? ""} onChange={(e) => edit(i, { name: e.target.value || null })} /></label>
                 <label>Strength<input value={m.strength ?? ""} onChange={(e) => edit(i, { strength: e.target.value })} /></label>
-                <label>Times (24h, comma separated)<input value={m.schedule.join(",")} onChange={(e) => edit(i, { schedule: e.target.value.split(",").map((s) => s.trim()).filter(Boolean) })} /></label>
-                <label>Days<input type="number" min="1" max="365" value={m.durationDays ?? ""} onChange={(e) => edit(i, { durationDays: +e.target.value || null })} /></label>
+                <label>Frequency pattern<input value={m.frequencyPattern ?? ""} placeholder="e.g. 1-0-1" onChange={(e) => edit(i, { frequencyPattern: e.target.value || null })} /></label>
+                <label>Times per day<input type="number" min="1" max="6" value={m.timesPerDay ?? ""} onChange={(e) => edit(i, { timesPerDay: e.target.value ? Number(e.target.value) : null })} /></label>
+                <label>Reminder times (24h, comma separated)<input value={m.schedule.join(",")} onChange={(e) => edit(i, { schedule: e.target.value.split(",").map((s) => s.trim()).filter(Boolean) })} /></label>
+                <label>Days{m.durationDefaulted && <small> (one-day default)</small>}<input type="number" min="1" max="365" value={m.durationDays ?? ""} onChange={(e) => edit(i, { durationDays: +e.target.value || null, durationDefaulted: false })} /></label>
               </div>
-              <label>When to take<input value={m.timing ?? ""} onChange={(e) => edit(i, { timing: e.target.value })} /></label>
-            </div>))}
-          <button onClick={confirm} disabled={busy}>{busy ? "Saving…" : "Confirm and start reminders"}</button>
+              <small>Schedule source: {m.scheduleOrigin === "generated" ? "generated from pattern; verify these times" : m.scheduleOrigin === "prescription" ? "exact time printed on prescription" : "caregiver-entered"}</small>
+              <label>When to take<input value={m.timing ?? ""} onChange={(e) => edit(i, { timing: e.target.value || null })} /></label>
+              <label className="verify-control"><input type="checkbox" checked={m.caregiverVerified} disabled={issues.length > 0} onChange={(e) => verify(i, e.target.checked)} /> I checked this medicine and schedule against the original prescription.</label>
+            </div>;
+          })}
+          <button onClick={confirm} disabled={busy || meds.length === 0 || meds.some((m) => m.reviewState !== "ready" || !m.caregiverVerified || reviewIssuesFor(m).length > 0)}>{busy ? "Saving…" : "Confirm and start reminders"}</button>
           <button className="alt" onClick={() => setMeds(null)}>Start over</button>
         </>)}
         <small>This app explains what is printed on the prescription. It does not give medical advice.</small>
@@ -184,7 +272,7 @@ export default function App() {
       {tab === "reminders" && (rems.length === 0 ? <p>No reminders yet. Add a prescription first.</p> : rems.map((r) => (
         <div key={r._id} className={`card ${r.status === "due" ? "due" : r.status === "missed" ? "missed" : ""}`}>
           <b>{r.name}</b> <small>{new Date(r.scheduledAt).toLocaleString()} · {r.status}</small>
-          {r.status === "due" && (<><p>{r.explanation}</p><button onClick={() => play(r)}>Play reminder</button><button className="alt" onClick={() => taken(r._id)}>Yes, I took it</button></>)}
+          {r.status === "due" && (<><p>{r.explanation}</p><button onClick={() => play(r)}>Play reminder</button><button className="alt" onClick={() => taken(r._id)}>Yes, I took it</button><button className="alt" onClick={() => snooze(r._id)}>Snooze 10 min</button></>)}
         </div>)))}
 
       {tab === "family" && (<>

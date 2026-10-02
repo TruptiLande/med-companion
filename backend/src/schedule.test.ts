@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { DEFAULT_MEAL_TIMES, generateSchedule } from "./schedule.js";
+import { DEFAULT_MEAL_TIMES, generateSchedule, hasExactSourcePhrase, hasExactSourceValue } from "./schedule.js";
 
 test("maps explicit three-slot frequency patterns to configured times", () => {
   assert.deepEqual(generateSchedule("1-0-0"), ["09:00"]);
@@ -23,4 +23,19 @@ test("does not guess schedules for missing, ambiguous, or invalid patterns", () 
     assert.deepEqual(generateSchedule(pattern), [], String(pattern));
   }
   assert.deepEqual(generateSchedule("1-0-1", { ...DEFAULT_MEAL_TIMES, dinner: "bedtime" }), []);
+});
+
+test("requires exact numeric evidence rather than matching inside other values", () => {
+  assert.equal(hasExactSourceValue("Directions: 1-0-1 after food", "1-0-1"), true);
+  assert.equal(hasExactSourceValue("Directions: 1 - 0 - 1 after food", "1-0-1"), true);
+  assert.equal(hasExactSourceValue("Directions: 1 tablet after breakfast", "1-0-1"), false);
+  assert.equal(hasExactSourceValue("Take at 09:00", "09:00"), true);
+  assert.equal(hasExactSourceValue("Take at 19:00", "09:00"), false);
+});
+
+test("matches critical medicine phrases case-insensitively with token boundaries", () => {
+  assert.equal(hasExactSourcePhrase("Metformin 500 mg after breakfast", "Metformin"), true);
+  assert.equal(hasExactSourcePhrase("Metformin 500 mg after breakfast", "500 mg"), true);
+  assert.equal(hasExactSourcePhrase("Metformin 500 mg", "Metfornin"), false);
+  assert.equal(hasExactSourcePhrase("Amlo 5 mg", "Amlodipine"), false);
 });

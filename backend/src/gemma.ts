@@ -9,7 +9,7 @@ const chat = async (system: string, user: string, json = false): Promise<string>
   });
   return (await r.json()).message.content;
 };
-const uncertainFieldSchema = z.enum(["name", "strength", "frequencyPattern", "timing"]);
+const uncertainFieldSchema = z.enum(["name", "strength", "frequency", "frequencyPattern", "timing", "schedule"]);
 const extractedMedSchema = z.object({
   name: z.string().trim().min(1).nullable().default(null),
   strength: z.string().trim().min(1).nullable().default(null),
@@ -23,8 +23,11 @@ const extractedMedSchema = z.object({
 
 export type Med = z.infer<typeof extractedMedSchema> & {
   caregiverVerified?: boolean;
+  durationDefaulted?: boolean;
+  ocrNeedsReview?: boolean;
   reviewState?: "ready" | "do_not_schedule";
   reviewIssues?: string[];
+  scheduleOrigin?: "prescription" | "generated" | "caregiver";
 };
 
 export type ExtractionResult = { meds: Med[]; error?: string };
