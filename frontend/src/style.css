@@ -1,0 +1,10 @@
+:root{--ink:#12343b;--paper:#eef3f0;--card:#fff;--amber:#e8a317;--alert:#b3261e;--ok:#2e7d5b}
+body{margin:0;background:var(--paper);color:var(--ink);font:18px/1.5 system-ui,"Noto Sans Devanagari","Noto Sans Tamil",sans-serif}
+main{max-width:640px;margin:0 auto;padding:20px}
+h1{font-size:28px;margin:8px 0 16px}
+.card{background:var(--card);border:2px solid var(--ink);border-radius:6px;padding:16px;margin:12px 0}
+.due{border-color:var(--amber);border-width:4px}.missed{border-color:var(--alert)}
+button,select,input{font:inherit;padding:10px 14px;border:2px solid var(--ink);border-radius:6px;background:#fff;color:var(--ink)}
+button{background:var(--ink);color:#fff;cursor:pointer;margin-right:8px}button.alt{background:#fff;color:var(--ink)}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:4px solid var(--amber)}
+nav{display:flex;gap:8px}.row{display:grid;grid-template-columns:1fr 1fr;gap:8px}small{opacity:.75}
