@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { DEFAULT_MEAL_TIMES, generateSchedule, hasExactSourcePhrase, hasExactSourceValue } from "./schedule.js";
+import { DEFAULT_MEAL_TIMES, generateSchedule, hasExactSourcePhrase, hasExactSourceValue, hasExplicitDailyFrequency, mealPatternFromTiming } from "./schedule.js";
 
 test("maps explicit three-slot frequency patterns to configured times", () => {
   assert.deepEqual(generateSchedule("1-0-0"), ["09:00"]);
@@ -38,4 +38,18 @@ test("matches critical medicine phrases case-insensitively with token boundaries
   assert.equal(hasExactSourcePhrase("Metformin 500 mg after breakfast", "500 mg"), true);
   assert.equal(hasExactSourcePhrase("Metformin 500 mg", "Metfornin"), false);
   assert.equal(hasExactSourcePhrase("Amlo 5 mg", "Amlodipine"), false);
+});
+
+test("recognizes explicit daily-frequency wording and rejects mismatched counts", () => {
+  assert.equal(hasExplicitDailyFrequency("Take once daily after breakfast", 1), true);
+  assert.equal(hasExplicitDailyFrequency("Take twice a day", 2), true);
+  assert.equal(hasExplicitDailyFrequency("Take once daily", 2), false);
+  assert.equal(hasExplicitDailyFrequency("Take as directed", 1), false);
+});
+
+test("maps only explicit meal-time cues matching the prescribed dose count", () => {
+  assert.equal(mealPatternFromTiming("after breakfast", 1), "1-0-0");
+  assert.equal(mealPatternFromTiming("after breakfast and dinner", 2), "1-0-1");
+  assert.equal(mealPatternFromTiming("after breakfast", 2), null);
+  assert.equal(mealPatternFromTiming("with food", 1), null);
 });

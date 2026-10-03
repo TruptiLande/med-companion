@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="1000" viewBox="0 0 1400 1000">
+  <rect width="1400" height="1000" fill="#ffffff"/>
+  <rect x="48" y="48" width="1304" height="904" rx="12" fill="#ffffff" stroke="#243a34" stroke-width="3"/>
+  <text x="100" y="135" font-family="Arial, sans-serif" font-size="44" font-weight="700" fill="#243a34">SAMPLE HEALTH CENTRE</text>
+  <text x="100" y="185" font-family="Arial, sans-serif" font-size="24" fill="#53645e">DEMO DOCUMENT - NOT A REAL PRESCRIPTION</text>
+  <line x1="100" y1="220" x2="1300" y2="220" stroke="#9aaba1" stroke-width="2"/>
+  <text x="100" y="285" font-family="Arial, sans-serif" font-size="27" fill="#243a34">Patient: TEST PATIENT</text>
+  <text x="920" y="285" font-family="Arial, sans-serif" font-size="27" fill="#243a34">Date: 03 October 2026</text>
+  <text x="100" y="390" font-family="Arial, sans-serif" font-size="32" font-weight="700" fill="#17645d">PRESCRIPTION</text>
+  <text x="125" y="485" font-family="Arial, sans-serif" font-size="31" font-weight="700" fill="#243a34">TESTMED 123 mg</text>
+  <text x="125" y="550" font-family="Arial, sans-serif" font-size="28" fill="#243a34">Take one tablet once daily after breakfast for 7 days.</text>
+  <text x="125" y="610" font-family="Arial, sans-serif" font-size="25" fill="#53645e">Frequency: once daily</text>
+  <text x="125" y="660" font-family="Arial, sans-serif" font-size="25" fill="#53645e">Timing: after breakfast</text>
+  <line x1="100" y1="745" x2="1300" y2="745" stroke="#d8e1db" stroke-width="2"/>
+  <text x="100" y="810" font-family="Arial, sans-serif" font-size="24" font-weight="700" fill="#a5483d">TEST FIXTURE ONLY - DO NOT TAKE MEDICINE BASED ON THIS IMAGE</text>
+  <text x="100" y="860" font-family="Arial, sans-serif" font-size="20" fill="#53645e">Fictional medicine and patient. This image is only for testing prescription reading.</text>
+</svg>

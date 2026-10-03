@@ -9,6 +9,7 @@ import { reminders, medications, ObjectId } from "./db.js";
 import { extractMeds, explainMed, type Med } from "./gemma.js";
 import { DEFAULT_MEAL_TIMES, isValidClockTime, type MealTimes } from "./schedule.js";
 import { getReviewIssues, prepareMedForReview } from "./review.js";
+import { getTakenTransition, TAKEABLE_REMINDER_STATUSES } from "./reminder-state.js";
 import { medAgent } from "./agent.js";
 import { medicationReminderWorkflow, snoozeSignal, takenSignal } from "./temporal/workflows.js";
 
@@ -131,20 +132,29 @@ app.post("/api/reminders/:id/taken", async (req, res) => {
   if (!ObjectId.isValid(req.params.id)) return res.status(400).json({ error: "Invalid reminder ID." });
   try {
     const reminderId = new ObjectId(req.params.id);
+    const reminder = await reminders.findOne({ _id: reminderId });
+    const transition = getTakenTransition(reminder?.status);
+    if (transition === "not-found") return res.status(404).json({ error: "Reminder not found." });
+    if (transition === "already-confirmed") return res.json({ ok: true, status: "confirmed" });
+    if (transition === "conflict") return res.status(409).json({ error: "This reminder is no longer active. Refresh the reminder list." });
+
     const claim = await reminders.updateOne(
-      { _id: reminderId, status: "due" },
+      { _id: reminderId, status: { $in: TAKEABLE_REMINDER_STATUSES } },
       { $set: { status: "confirmed", confirmedAt: new Date() } },
     );
     if (claim.matchedCount === 0) {
-      const reminder = await reminders.findOne({ _id: reminderId });
-      if (!reminder) return res.status(404).json({ error: "Reminder not found." });
-      if (reminder.status === "confirmed") return res.json({ ok: true, status: "confirmed" });
+      const latest = await reminders.findOne({ _id: reminderId });
+      const latestTransition = getTakenTransition(latest?.status);
+      if (latestTransition === "not-found") return res.status(404).json({ error: "Reminder not found." });
+      if (latestTransition === "already-confirmed") return res.json({ ok: true, status: "confirmed" });
       return res.status(409).json({ error: "This reminder is no longer active. Refresh the reminder list." });
     }
-    try {
-      await temporal.workflow.getHandle(`rem-${req.params.id}`).signal(takenSignal);
-    } catch (signalError) {
-      if ((signalError as { name?: string }).name !== "WorkflowNotFoundError") console.error("Taken signal delivery failed after confirmation:", signalError);
+    if (reminder?.status === "due") {
+      try {
+        await temporal.workflow.getHandle(`rem-${req.params.id}`).signal(takenSignal);
+      } catch (signalError) {
+        if ((signalError as { name?: string }).name !== "WorkflowNotFoundError") console.error("Taken signal delivery failed after confirmation:", signalError);
+      }
     }
     return res.json({ ok: true, status: "confirmed" });
   } catch (error) {

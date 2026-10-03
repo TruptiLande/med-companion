@@ -46,6 +46,29 @@ test("does not generate while a critical field is missing or uncertain", () => {
   assert.deepEqual(uncertain.schedule, []);
 });
 
+test("does not guess reminder times from a daily count without a verified pattern", () => {
+  const result = prepareMedForReview(
+    medicine({ timesPerDay: 2, frequencyPattern: null }),
+    "TestMed 5 mg; twice daily after food",
+  );
+
+  assert.equal(result.reviewState, "do_not_schedule");
+  assert.deepEqual(result.schedule, []);
+  assert.ok(result.reviewIssues?.includes("schedule"));
+});
+
+test("maps an explicitly prescribed daily frequency and meal time to its configured reminder", () => {
+  const result = prepareMedForReview(
+    medicine({ timesPerDay: 1, frequencyPattern: "once daily", timing: "after breakfast", uncertainFields: ["frequencyPattern", "schedule"] }),
+    "TestMed 5 mg; take once daily after breakfast",
+  );
+
+  assert.equal(result.reviewState, "ready");
+  assert.deepEqual(result.schedule, ["09:00"]);
+  assert.deepEqual(result.reviewIssues, []);
+  assert.equal(result.frequencyPattern, null);
+});
+
 test("accepts exact printed clock times as review evidence", () => {
   const result = prepareMedForReview(medicine({ schedule: ["09:00"] }), "TestMed 5 mg once daily at 09:00");
 

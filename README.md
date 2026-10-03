@@ -11,6 +11,11 @@ The AI only explains what is printed on the prescription. It never prescribes or
 Set DEMO=1 in .env so reminders fire in seconds (retry after 60s) instead of at clock time.
 Set `OCR_CONFIDENCE_THRESHOLD` in `backend/.env` to adjust when EasyOCR fallback is attempted. Low-confidence results stay in caregiver review.
 
+## Voice reminders
+Automatic spoken reminders are enabled while the app is open. If your browser blocks autoplay, tap the voice control once to allow audio; you can mute it there. For spoken dose feedback, tap the microphone on a due or missed reminder, say “I took it” (or “मी घेतली” in Marathi), then confirm the recognized phrase. Speech recognition depends on browser support and microphone permission; the manual confirmation button remains available. Voice reminders do not run in the background when the app is closed.
+
+The prescription screen includes a fictional sample image for testing OCR and review. It is clearly marked as a test fixture and must not be used as medical guidance. A meal-time reminder is generated only when both the daily frequency and the matching meal phrase (for example, “once daily after breakfast”) are confirmed in the OCR text; frequency alone never determines an invented time.
+
 ## Offline honesty
-OCR, Gemma, Temporal and Mongo (use a local mongod) run offline. ElevenLabs and family alerts need internet; without a key the UI falls back to text.
+OCR, Gemma, Temporal and Mongo (use a local mongod) run offline. ElevenLabs and family alerts need internet; without a key, the UI uses browser speech when an appropriate voice is available and otherwise shows the reminder as text.
 Mastra's API changes often: if backend/src/agent.ts fails to compile, check it against your installed version.
