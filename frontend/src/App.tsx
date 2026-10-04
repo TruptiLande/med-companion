@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Bell, CalendarClock, Camera, Check, HeartHandshake, Home, Mic, Pill, ShieldCheck, Volume2 } from "lucide-react";
+import { Bell, CalendarClock, Camera, Check, HeartHandshake, Home, MessageSquare, Mic, Pill, ShieldCheck, Volume2 } from "lucide-react";
 import { isTakenPhrase } from "./voice.js";
 type Med = {
   name: string | null;
@@ -66,6 +66,9 @@ export default function App() {
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const voiceEnabledRef = useRef(true);
   const [audioUnlocked, setAudioUnlocked] = useState(false);
+  const [agentInput, setAgentInput] = useState("");
+  const [agentBusy, setAgentBusy] = useState(false);
+  const [agentThread, setAgentThread] = useState<{ role: "user" | "assistant"; text: string }[]>([]);
   const [listeningReminder, setListeningReminder] = useState<string | null>(null);
   const [voiceConfirmation, setVoiceConfirmation] = useState<{ reminderId: string; transcript: string; matched: boolean } | null>(null);
   const [browserVoices, setBrowserVoices] = useState<SpeechSynthesisVoice[]>([]);
@@ -319,6 +322,30 @@ export default function App() {
       {voiceFeedbackFor(reminder)}
     </>
   );
+  const askAssistant = async () => {
+    const message = agentInput.trim();
+    if (!message || agentBusy) return;
+    setAgentBusy(true);
+    setAgentInput("");
+    setAgentThread((thread) => [...thread, { role: "user", text: message }]);
+    try {
+      const response = await fetch("/api/agent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: `Preferred language: ${lang}. ${message}` }),
+      });
+      const result = await response.json().catch(() => ({}));
+      const reply = typeof result.reply === "string" ? result.reply : result.error ?? "The assistant could not answer right now.";
+      setAgentThread((thread) => [...thread, { role: "assistant", text: reply }]);
+      if (!response.ok) setMsg(result.error ?? "The assistant could not answer right now.");
+    } catch {
+      setAgentThread((thread) => [...thread, { role: "assistant", text: "Could not reach the assistant. Check that the backend is running." }]);
+      setMsg("Could not reach the assistant. Check that the backend is running.");
+    } finally {
+      setAgentBusy(false);
+    }
+  };
+
   const taken = async (id: string) => {
     try {
       const response = await fetch(`/api/reminders/${id}/taken`, { method: "POST" });
@@ -403,6 +430,21 @@ export default function App() {
             </section>
 
             <section className="home-bottom">
+              <article className="assistant-card">
+                <div className="section-heading">
+                  <div><p className="eyebrow">SCHEDULE ASSISTANT</p><h2>Ask about confirmed medicines</h2></div>
+                  <span className="assistant-icon"><MessageSquare size={18} aria-hidden="true" /></span>
+                </div>
+                <p className="assistant-copy">This helper can look up the confirmed schedule. It cannot prescribe, change doses, or replace a doctor or pharmacist.</p>
+                {agentThread.length > 0 && <div className="assistant-thread" aria-live="polite">
+                  {agentThread.map((item, index) => <p key={`${item.role}-${index}`} className={item.role === "user" ? "assistant-user" : "assistant-reply"}>{item.text}</p>)}
+                </div>}
+                <form className="assistant-form" onSubmit={(event) => { event.preventDefault(); void askAssistant(); }}>
+                  <label className="sr-only" htmlFor="assistant-question">Ask the medication assistant</label>
+                  <input id="assistant-question" value={agentInput} onChange={(event) => setAgentInput(event.target.value)} placeholder="When is the next dose?" disabled={agentBusy} />
+                  <button className="primary-action" type="submit" disabled={agentBusy || !agentInput.trim()}>{agentBusy ? "Thinking…" : "Ask"}</button>
+                </form>
+              </article>
               <article className="quick-card"><div className="quick-icon"><Camera size={20} /></div><div><h3>Have a new prescription?</h3><p>Add a photo and review every detail before scheduling.</p></div><button className="secondary-action" onClick={() => { setMeds(null); setTab("setup"); }}>Add prescription <span aria-hidden="true">→</span></button></article>
               <article className="care-note"><ShieldCheck size={19} /><p>Med Companion explains what is printed on a prescription. It does not provide medical advice.</p></article>
             </section>

@@ -10,7 +10,8 @@ import { extractMeds, explainMed, type Med } from "./gemma.js";
 import { DEFAULT_MEAL_TIMES, isValidClockTime, type MealTimes } from "./schedule.js";
 import { getReviewIssues, prepareMedForReview } from "./review.js";
 import { getTakenTransition, TAKEABLE_REMINDER_STATUSES } from "./reminder-state.js";
-import { medAgent } from "./agent.js";
+import { MastraServer } from "@mastra/express";
+import { mastra, medAgent } from "./mastra/index.js";
 import { medicationReminderWorkflow, snoozeSignal, takenSignal } from "./temporal/workflows.js";
 
 const run = promisify(execFile);
@@ -200,5 +201,20 @@ app.post("/api/tts", async (req, res) => {
   }
 });
 
-app.post("/api/agent", async (req, res) => res.json({ reply: (await medAgent.generate(req.body.message)).text }));
+app.post("/api/agent", async (req, res) => {
+  const message = req.body?.message;
+  if (typeof message !== "string" || !message.trim()) {
+    return res.status(400).json({ error: "Ask a question about the confirmed medication schedule." });
+  }
+  try {
+    const result = await medAgent.generate(message.trim());
+    const reply = typeof result.text === "string" ? result.text : "";
+    if (!reply.trim()) return res.status(502).json({ error: "The assistant did not return an answer. Try again." });
+    res.json({ reply });
+  } catch (error) {
+    console.error("Mastra agent failed:", error);
+    res.status(500).json({ error: "The assistant could not answer right now. Try again." });
+  }
+});
+await new MastraServer({ app, mastra, prefix: "/api" }).init();
 app.listen(3001, () => console.log("API on :3001"));

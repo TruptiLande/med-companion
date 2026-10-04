@@ -18,4 +18,6 @@ The prescription screen includes a fictional sample image for testing OCR and re
 
 ## Offline honesty
 OCR, Gemma, Temporal and Mongo (use a local mongod) run offline. ElevenLabs and family alerts need internet; without a key, the UI uses browser speech when an appropriate voice is available and otherwise shows the reminder as text.
-Mastra's API changes often: if backend/src/agent.ts fails to compile, check it against your installed version.
+
+## Mastra assistant
+Schedule questions go through a Mastra agent (`backend/src/mastra`) that can look up confirmed medicines and reminder status. The Express adapter also exposes Mastra HTTP routes under `/api` (for example `POST /api/agents/medication-agent/generate`). The home screen chat uses `POST /api/agent`. The assistant never prescribes or changes doses. If `backend/src/mastra` fails to compile, check it against the installed `@mastra/core` version.
